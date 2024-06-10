@@ -4,6 +4,7 @@ import os
 import random
 import argparse
 
+# Name of the App
 app = Flask(__name__)
 
 # Environment variables with defaults
