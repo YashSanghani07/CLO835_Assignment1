@@ -1,13 +1,9 @@
 provider "aws" {
-  region = var.aws_region
-}
-
-variable "aws_region" {
-  default = "us-east-1"
+  region = "us-east-1"
 }
 
 variable "aws_account_id" {
-  default = "<YOUR_AWS_ACCOUNT_ID>"
+  default = "309676119673"
 }
 
 resource "aws_ecr_repository" "webapp" {
@@ -18,14 +14,31 @@ resource "aws_ecr_repository" "mysql" {
   name = "mysql"
 }
 
-resource "aws_security_group" "web_sg" {
-  name        = "web-sg"
-  description = "Allow web traffic"
-  vpc_id      = aws_vpc.default.id
+resource "aws_vpc" "my_vpc" {
+  cidr_block = "10.0.0.0/16"
+}
+
+resource "aws_subnet" "my_subnet" {
+  vpc_id            = aws_vpc.my_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
+}
+
+resource "aws_security_group" "my_security_group" {
+  name        = "my_security_group"
+  description = "Allow SSH and HTTP inbound traffic"
+  vpc_id      = aws_vpc.my_vpc.id
 
   ingress {
-    from_port   = 8081
-    to_port     = 8083
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -38,13 +51,15 @@ resource "aws_security_group" "web_sg" {
   }
 }
 
-resource "aws_instance" "app_instance" {
-  count         = 3
-  ami           = "ami-0abcdef1234567890"
-  instance_type = "t2.micro"
-  key_name      = "your-key-pair" # Update with your key pair name
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
-
+resource "aws_instance" "my_instance" {
+  count                  = 3
+  ami                    = "ami-0d191299f2822b1fa" # Amazon Linux 2 AMI
+  instance_type          = "t2.micro"
+  key_name               = "my-key" # Update with your key pair name
+  subnet_id              = "subnet-01e9abed8c8c24db7"  # Replace with your subnet ID
+  vpc_security_group_ids = ["sg-0f841e3f2d6b6e1e7"]
+  associate_public_ip_address = true
+  
   user_data = <<-EOF
     #!/bin/bash
     amazon-linux-extras install docker -y
@@ -53,12 +68,14 @@ resource "aws_instance" "app_instance" {
 
     docker login -u AWS -p $(aws ecr get-login-password --region ${var.aws_region}) ${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
 
+    docker network create app-network
+
     docker run --name webapp --network app-network -e COLOR=${count.index} -p 808${count.index+1}:8080 ${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/webapp:latest
 
     docker run --name mysql --network app-network -e MYSQL_ROOT_PASSWORD=rootpassword -e MYSQL_DATABASE=webapp -d ${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/mysql:latest
   EOF
 
   tags = {
-    Name = "WebAppInstance-${count.index + 1}"
+    Name = "my-instance"
   }
 }
